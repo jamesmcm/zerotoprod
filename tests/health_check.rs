@@ -1,4 +1,5 @@
 use lpalmieri::configuration::{get_configuration, DatabaseSettings};
+use lpalmieri::telemetry::{get_subscriber, init_subscriber};
 use sqlx::PgPool;
 use sqlx::{Connection, Executor, PgConnection};
 use std::net::TcpListener;
@@ -7,6 +8,14 @@ use uuid::Uuid;
 pub struct TestApp {
     pub address: String,
     pub db_pool: PgPool,
+}
+// Ensure that the `tracing` stack is only initialised once using `lazy_static`
+lazy_static::lazy_static! {
+    static ref TRACING: () = {
+        let filter = if std::env::var("TEST_LOG").is_ok() { "debug" } else { "" };
+        let subscriber = get_subscriber("test".into(), filter.into());
+        init_subscriber(subscriber);
+    };
 }
 
 #[actix_rt::test]
@@ -54,6 +63,7 @@ pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
 }
 // Launch our application in the background ~somehow~
 async fn spawn_app() -> TestApp {
+    lazy_static::initialize(&TRACING);
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
     // We retrieve the port assigned to us by the OS
     let port = listener.local_addr().unwrap().port();
